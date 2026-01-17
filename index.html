@@ -751,64 +751,137 @@
     // PDF
     // ----------------------------
     function downloadPDF() {
-      const total = getTotal();
-      const keys = Object.keys(cart);
+  const total = getTotal();
+  const keys = Object.keys(cart);
 
-      if (total <= 0 || keys.length === 0) return alert("Add items first to download PDF.");
+  if (total <= 0 || keys.length === 0) {
+    alert("Add items first to download PDF.");
+    return;
+  }
 
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
 
-      const shopName = "MM Panipuri";
-      const dateStr = new Date().toLocaleString();
-      const mode = document.getElementById("parcelMode").value === "yes" ? "Parcel" : "No Parcel";
-      const given = Number(document.getElementById("givenAmount").value || 0);
-      const balance = given - total;
+  // ✅ IMPORTANT: use standard font to avoid spacing bugs
+  doc.setFont("helvetica", "normal");
 
-      let y = 15;
-      doc.setFontSize(18);
-      doc.text(shopName, 14, y); y += 8;
-      doc.setFontSize(11);
-      doc.text("Billing Receipt", 14, y); y += 6;
-      doc.setFontSize(10);
-      doc.text("Date: " + dateStr, 14, y); y += 5;
-      doc.text("Mode: " + mode, 14, y); y += 8;
+  const shopName = "MM Panipuri";
+  const dateStr = new Date().toLocaleString();
+  const mode = document.getElementById("parcelMode").value === "yes" ? "Parcel" : "No Parcel";
+  const given = Number(document.getElementById("givenAmount").value || 0);
+  const balance = given - total;
 
-      doc.setFontSize(12);
-      doc.text("Items:", 14, y); y += 7;
+  // Layout constants
+  const left = 14;
+  const right = 196;
+  let y = 16;
 
-      doc.setFontSize(10);
-      doc.text("Name", 14, y);
-      doc.text("Qty", 120, y);
-      doc.text("Total", 160, y);
-      y += 4;
-      doc.line(14, y, 196, y);
-      y += 7;
+  // Helper
+  const line = (yy) => doc.line(left, yy, right, yy);
+  const money = (n) => `₹${Number(n || 0)}`;
 
-      keys.forEach(name => {
-        const c = cart[name];
-        const lineTotal = c.qty * c.price;
-        doc.text(name, 14, y);
-        doc.text(String(c.qty), 120, y);
-        doc.text("₹" + lineTotal, 160, y);
-        y += 7;
-        if (y > 270) { doc.addPage(); y = 15; }
-      });
+  // ---- Header Box
+  doc.setDrawColor(0);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(left, y - 10, right - left, 28, 3, 3); // header box
 
-      y += 2;
-      doc.line(14, y, 196, y);
-      y += 10;
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.text(shopName, left + 3, y);
 
-      doc.setFontSize(13);
-      doc.text("Total Amount: ₹" + total, 14, y); y += 8;
-      doc.setFontSize(11);
-      doc.text("Customer Given: ₹" + given, 14, y); y += 7;
-      doc.text("Balance Return: ₹" + balance, 14, y); y += 12;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text("Billing Receipt", left + 3, y + 6);
 
-      doc.setFontSize(11);
-      doc.text("Thank you! Visit Again 😊", 14, y);
+  doc.setFontSize(9);
+  doc.text(`Date: ${dateStr}`, left + 3, y + 12);
+  doc.text(`Mode: ${mode}`, left + 3, y + 17);
 
-      doc.save(`MM_Panipuri_Bill_${Date.now()}.pdf`);
+  y += 26;
+
+  // ---- Table Header
+  y += 8;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+
+  doc.text("Item", left, y);
+  doc.text("Qty", 120, y, { align: "right" });
+  doc.text("Rate", 155, y, { align: "right" });
+  doc.text("Amount", right, y, { align: "right" });
+
+  doc.setFont("helvetica", "normal");
+  y += 2;
+  line(y);
+  y += 6;
+
+  // ---- Table Rows
+  keys.forEach((name, idx) => {
+    const c = cart[name];
+    const qty = c.qty;
+    const rate = c.price;
+    const amt = qty * rate;
+
+    // Wrap name if long
+    const itemNameLines = doc.splitTextToSize(name, 90);
+
+    // Row height depends on line count
+    const rowH = Math.max(7, itemNameLines.length * 5);
+
+    // Print item name
+    doc.setFontSize(10);
+    doc.text(itemNameLines, left, y);
+
+    // Print numbers aligned right
+    doc.text(String(qty), 120, y, { align: "right" });
+    doc.text(money(rate), 155, y, { align: "right" });
+    doc.text(money(amt), right, y, { align: "right" });
+
+    y += rowH;
+
+    // Auto new page
+    if (y > 255) {
+      doc.addPage();
+      doc.setFont("helvetica", "normal");
+      y = 20;
+    }
+  });
+
+  // ---- Footer Totals
+  y += 2;
+  line(y);
+  y += 8;
+
+  // Totals box
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+
+  const boxX = 110;
+  const boxW = right - boxX;
+  const boxH = 30;
+
+  doc.roundedRect(boxX, y - 4, boxW, boxH, 3, 3);
+
+  doc.setFontSize(10);
+  doc.text("Total:", boxX + 5, y + 4);
+  doc.text(money(total), right - 5, y + 4, { align: "right" });
+
+  doc.setFont("helvetica", "normal");
+  doc.text("Customer Given:", boxX + 5, y + 12);
+  doc.text(money(given), right - 5, y + 12, { align: "right" });
+
+  doc.text("Balance Return:", boxX + 5, y + 20);
+  doc.text(money(balance), right - 5, y + 20, { align: "right" });
+
+  y += 40;
+
+  // ---- Thank you note
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text("Thank you! Visit Again :)", left, y);
+
+  // Save
+  const fileName = `MM_Panipuri_Bill_${Date.now()}.pdf`;
+  doc.save(fileName);
     }
 
     // ----------------------------
